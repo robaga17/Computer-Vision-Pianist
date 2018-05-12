@@ -28,21 +28,39 @@ classdef Section < MusicPlayer
         function unitMap = getUnitMap(self)
             objects = self.findObjects();
             [~, nc] = size(self.Image);
-            unitMap = cell(30, nc);
+            trebleMap = cell(30, nc);
+            bassMap = cell(30, nc);
+            unitMap = {trebleMap, bassMap};
+            % add notes
             for i = 1:length(objects)
                 object = objects{i};
+                % determine if object is in treble (1) or bass (2)
+                tb = self.trebleOrBass(object);
                 if object.isRest()
-                    unitMap{30, object.Stats.Centroid(1)} = Unit(15, object.getRestDuration());
+                    unitMap{tb}{30, object.Stats.Centroid(1)} = Unit(30, object.getRestDuration());
                 elseif object.isNote()
-                    % do kernel stuff, put it in unit map
-                    durations = object.getNoteDurations();
-                    % TODO: implement half notes and whole notes
-                    if ismember(16, durations) || ismember(8, durations)
-                        % right now, just turning them into rests
-                        unitMap{30, object.Stats.Centroid(2)} = Unit(15, sum(durations));
-                    end
-                    unitMap = insertNote(unitMap, object, self);
+                    % put it in unit map
+                    unitMap = insertNote(unitMap, tb, object, self);
                 end
+            end
+            % add modifications
+            for i = 1:length(objects)
+                object = objects{i};
+                tb = self.trebleOrBass(object);
+                if strcmp(object.Label, 'dot')
+                    unitMap = applyDot(unitMap, tb, object, self);
+                end
+            end
+        end
+        
+        function tb = trebleOrBass(self, object)
+            % returns 1 if object in treble, 2 if bass
+            trebleDist = abs(self.TrebleRows(1) - object.Stats.Centroid(2));
+            bassDist = abs(self.BassRows(5) - object.Stats.Centroid(2));
+            if trebleDist < bassDist
+                tb = 1;
+            else
+                tb = 2;
             end
         end
         
