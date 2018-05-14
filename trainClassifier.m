@@ -4,5 +4,7 @@ imds = imageDatastore('train', 'IncludeSubfolders', true, 'FileExtensions', '.jp
 bag = bagOfFeatures(imds, 'Verbose', false);
 classifier = trainImageCategoryClassifier(imds, bag, 'Verbose', false);
 
+save newestModel.mat classifier;
+
 end
 

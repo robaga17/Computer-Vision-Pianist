@@ -49,6 +49,10 @@ classdef Section < MusicPlayer
                 tb = self.trebleOrBass(object);
                 if strcmp(object.Label, 'dot')
                     unitMap = applyDot(unitMap, tb, object, self);
+                elseif object.isAccidental()
+                    unitMap = applyAccidental(unitMap, tb, object, self);
+                elseif strcmp(object.Label, 'accent')
+                    unitMap = applyAccent(unitMap, tb, object, self);
                 end
             end
         end

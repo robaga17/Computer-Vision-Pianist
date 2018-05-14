@@ -25,6 +25,10 @@ classdef MusicalObject < handle
             tf = length(self.Label) == 5 && strcmp('rest', self.Label(2:end));
         end
         
+        function tf = isAccidental(self)
+            tf = strcmp(self.Label, 'natural') || strcmp(self.Label, 'flat') || strcmp(self.Label, 'sharp');
+        end
+        
         function duration = getRestDuration(self)
             if ~self.isRest()
                 error('Not a rest.');

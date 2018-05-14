@@ -28,7 +28,7 @@ classdef Page < MusicPlayer
             staffRows = Page.getStaffRows(img);
             [img, staffLines] = Page.removeStaffLines(img, staffRows);
         end
-        
+      
         function sections = getSections(self)
             if ~isempty(self.Sections)
                 sections = self.Sections;
@@ -56,6 +56,21 @@ classdef Page < MusicPlayer
                 sections{i} = Section(sectionImg, trebleRows, bassRows);
             end
             self.Sections = sections;
+        end
+        
+        function structure = getStructure(self)
+            structure1 = {};
+            structure2 = {};
+            sections = self.getSections();
+            for i = 1:length(sections)
+                section = sections{i};
+                unitMap =  section.getUnitMap();
+                s1 = unitMap{1}(:, any(~cellfun('isempty',unitMap{1}), 1));
+                s2 = unitMap{2}(:, any(~cellfun('isempty',unitMap{2}), 1));
+                structure1 = [structure1, s1];
+                structure2 = [structure2, s2];
+            end
+            structure = {structure1, structure2};
         end
         
         function audio = getAudio(self)
