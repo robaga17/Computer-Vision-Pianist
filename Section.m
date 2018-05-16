@@ -1,4 +1,5 @@
-classdef Section < MusicPlayer
+classdef Section < handle
+    % represents one treble staff, bass staff region
     
     properties
         Image
@@ -37,6 +38,12 @@ classdef Section < MusicPlayer
                 % determine if object is in treble (1) or bass (2)
                 tb = self.trebleOrBass(object);
                 if object.isRest()
+                    rowPos = object.Stats.Centroid(2);
+                    if tb == 1 && (rowPos < self.TrebleRows(2) || rowPos > self.TrebleRows(4))
+                        continue
+                    elseif tb == 2 && (rowPos < self.BassRows(2) || rowPos > self.BassRows(4))
+                        continue
+                    end
                     unitMap{tb}{30, object.Stats.Centroid(1)} = Unit(30, object.getRestDuration());
                 elseif object.isNote()
                     % put it in unit map
@@ -53,6 +60,8 @@ classdef Section < MusicPlayer
                     unitMap = applyAccidental(unitMap, tb, object, self);
                 elseif strcmp(object.Label, 'accent')
                     unitMap = applyAccent(unitMap, tb, object, self);
+                elseif object.isDynamic()
+                    unitMap = applyDynamic(unitMap, object);
                 end
             end
         end
@@ -66,75 +75,6 @@ classdef Section < MusicPlayer
             else
                 tb = 2;
             end
-        end
-        
-        function audio = getAudio(self)
-            objects = self.findObjects();
-            [~, nc] = size(self.Image);
-            trebleNotes = cell(1, nc);
-            bassNotes = cell(1, nc);
-            middleRow = (self.TrebleRows(5) + self.BassRows(1)) / 2;
-            % TODO: clean this logic
-            for i = 1:length(objects)
-                object = objects{i};
-                % TODO: add methods to musical object that determine
-                % properties of note
-                if length(object.Label) < 2 || ~(strcmp(object.Label(1:2), 'n ') || strcmp(object.Label, 'qrest'))
-                    continue
-                end
-                objectCenterCol = object.BoundingBox(1) + round(object.BoundingBox(3)/2);
-                objectCenterRow = object.BoundingBox(2) + round(object.BoundingBox(4)/2);
-                if objectCenterRow < middleRow
-                    trebleNotes{objectCenterCol} = Note(self, object);
-                else
-                    bassNotes{objectCenterCol} = Note(self, object);
-                end
-            end
-            for i = 1:length(objects)
-                object = objects{i};
-                if ~strcmp(object.Label, 'dot')
-                    continue
-                end
-                middleRow = (self.TrebleRows(5) + self.BassRows(1)) / 2;
-                objectCenterCol = object.BoundingBox(1) + round(object.BoundingBox(3)/2);
-                objectCenterRow = object.BoundingBox(2) + round(object.BoundingBox(4)/2);
-                if objectCenterRow < middleRow
-                    for j = objectCenterCol-1:-1:objectCenterCol-30
-                        if ~isempty(trebleNotes{j})
-                            trebleNotes{j}.Dotted = 1;
-                            break
-                        end
-                    end
-                else
-                    for j = objectCenterCol-1:-1:objectCenterCol-30
-                        if ~isempty(bassNotes{j})
-                            bassNotes{j}.Dotted = 1;
-                            break
-                        end
-                    end
-                end
-            end
-            audioList = cell(nc, 1);
-            k = 0;
-            for i = 1:length(self.BarLines)-1
-                barLineStart = self.BarLines(i);
-                barLineEnd = self.BarLines(i+1);
-                trebleAudioList = {};
-                bassAudioList = {};
-                for j = barLineStart:barLineEnd-1
-                    if ~isempty(trebleNotes{j})
-                        trebleAudioList{length(trebleAudioList)+1} = trebleNotes{j}.getAudio();
-                    end
-                    if ~isempty(bassNotes{j})
-                        bassAudioList{length(bassAudioList)+1} = bassNotes{j}.getAudio();
-                    end
-                end
-                trebleAudio = concatenateAudio(trebleAudioList);
-                bassAudio = concatenateAudio(bassAudioList);
-                k = k + 1;
-                audioList{k} = mergeAudio(trebleAudio, bassAudio);
-            end
-            audio = concatenateAudio(audioList);
         end
         
         function objects = findObjects(self)
@@ -160,9 +100,15 @@ classdef Section < MusicPlayer
                 bb = floor(bb);
                 bb(3) = bb(3) + 1;
                 bb(4) = bb(4) + 1;
+                bb(1) = max(1, bb(1));
+                bb(2) = max(1, bb(2));
                 stats.BoundingBox = bb;
                 % create image
-                isoObjImg = objImg(bb(2):bb(2)+bb(4), bb(1):bb(1)+bb(3));
+                try
+                    isoObjImg = objImg(bb(2):bb(2)+bb(4)-1, bb(1):bb(1)+bb(3)-1);
+                catch
+                    keyboard
+                end
                 isoObjImg = padarray(isoObjImg, [5, 5], 0, 'both');
                 % create label
                 [labelIdx, ~] = predict(classifier, single(isoObjImg));
@@ -216,9 +162,6 @@ classdef Section < MusicPlayer
         end
         
         function [img, barLines] = removeBarLines(self, barCols)
-            % TODO: better removal proccess
-            %   Account for curves
-            %   Account for the row below
             % to remove staff lines, for each staffRow copy the row above
             img = self.Image;
             
@@ -249,7 +192,8 @@ classdef Section < MusicPlayer
         
         function removeText(self)
             img = self.Image;
-            [nr, ~] = size(img);
+            [nr, nc] = size(img);
+      
             topBound = self.TrebleRows(1);
             while topBound > 1 && any(img(topBound, :))
                 topBound = topBound - 1;
@@ -261,47 +205,6 @@ classdef Section < MusicPlayer
             self.TrebleRows = self.TrebleRows - topBound + 1;
             self.BassRows = self.BassRows - topBound + 1;
             self.Image = img(topBound:bottomBound, :);
-            % TODO: implement removeText()
-%             regions = cell(3, 1);
-%             offsets = zeros(size(regions));
-%             regions{1} = img(1:self.TrebleRows(1), :);
-%             offsets(1) = 0;
-%             regions{2} = img(self.TrebleRows(5):self.BassRows(1), :);
-%             offsets(2) = self.TrebleRows(5) - 1;
-%             regions{3} = img(self.BassRows(5):nr, :);
-%             offsets(3) = self.BassRows(5) - 1;
-%             wordBBs = [];
-%             words = {};
-%             for i = 1:length(regions)
-%                 text = ocr(regions{i});
-%                 for j = 1:length(text.Words)
-%                     word = text.Words{j};
-%                     valid = ((length(word) > 1 && sum(isstrprop(word, 'alphanum'))/length(word) > .5));
-%                     valid = valid && text.WordConfidences(j) > .6;
-%                     valid = valid || strcmp(word, '@');
-%                     valid = valid && ~strcmp(word, 'VI') && ~strcmp(word, 'V1');
-%                     if valid
-%                         wordBB = text.WordBoundingBoxes(j, :);
-%                         wordBB = floor(wordBB);
-%                         wordBB(2) = wordBB(2) + offsets(i);
-%                         wordBB(3) = wordBB(3) + 1;
-%                         wordBB(4) = wordBB(4) + 1;
-%                         img(wordBB(2):wordBB(2)+wordBB(4), wordBB(1):wordBB(1)+wordBB(3)) = ...
-%                             img(wordBB(2):wordBB(2)+wordBB(4), wordBB(1):wordBB(1)+wordBB(3)) * 0;
-%                         wordBBs = [wordBBs; wordBB];
-%                         words{length(words)+1} = word;
-%                     end
-%                 end
-%             end
-% %             imshow(self.Image);
-% %             for i = 1:size(wordBBs, 1)
-% %                 bb = wordBBs(i, :);
-% %                 r =        ('Position', bb, 'EdgeColor', 'r');
-% %                 keyboard;
-% %                 delete(r);
-% %             end
-%             self.Image = img;
-%             self.WordBoundingBoxes = wordBBs;
         end
         
     end

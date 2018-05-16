@@ -4,19 +4,21 @@ classdef Page < MusicPlayer
     properties
         FilePath
         Sections
+        Image
     end
     
     methods
         function page = Page(filePath)
             page.FilePath = filePath;
             page.Sections = {};
+            page.Image = [];
         end
         
-        function [img, staffLines]  = getCleanImage(self)
-            % img = binary page (1=black, 0=white) without non-musical words, or staff
-            %   lines
-            % staffLines = rows of staff lines (one per line)
-
+        function img = getImage(self)
+            if ~isempty(self.Image)
+                img = self.Image;
+                return
+            end
             img = imread(self.FilePath);
             [~, ~, np] = size(img);
             if np == 3
@@ -24,11 +26,73 @@ classdef Page < MusicPlayer
             end
             img = imbinarize(img);
             img = ~img;
+            self.Image = img;
+        end
+        
+        function [img, staffLines]  = getCleanImage(self)
+            % img = binary page (1=black, 0=white) without non-musical words, or staff
+            %   lines
+            % staffLines = rows of staff lines (one per line)
 
+            img = self.getImage();
+            
             staffRows = Page.getStaffRows(img);
             [img, staffLines] = Page.removeStaffLines(img, staffRows);
+            img = self.repairImage(img);
         end
       
+        function img = repairImage(self, img)
+            orig = self.getImage();
+            
+            % repair half notes
+            kernel = imread('kernels/halfNote.jpg');
+            if size(kernel, 3) == 3
+                kernel = rgb2gray(kernel);
+            end
+            kernel = imbinarize(kernel);
+            kernelVolume = sum(sum(kernel));
+            kernel = double(kernel);
+            kernel(kernel==0) = -1;
+            convPlot = conv2(img, kernel, 'same');
+            convPlot = (kernelVolume * 0.45 < convPlot);
+            cc = bwconncomp(convPlot);
+            if cc.NumObjects ~= 0
+                labeled = labelmatrix(cc);
+                [kr, kc] = size(kernel);
+                kernel(kernel==-1) = 0;
+                for i = 1:cc.NumObjects
+                    noteSpace = labeled == i;
+                    stats = regionprops(noteSpace);
+                    centroid = stats.Centroid;
+                    img(round(centroid(2)-kr/2):round(centroid(2)+kr/2)-1, round(centroid(1)-kc/2):round(centroid(1)+kc/2)-1) = img(round(centroid(2)-kr/2):round(centroid(2)+kr/2)-1, round(centroid(1)-kc/2):round(centroid(1)+kc/2)-1) + kernel;
+                end
+            end
+            
+            % repair whole notes
+            kernel = imread('kernels/wholeNote.jpg');
+            if size(kernel, 3) == 3
+                kernel = rgb2gray(kernel);
+            end
+            kernel = imbinarize(kernel);
+            kernelVolume = sum(sum(kernel));
+            kernel = double(kernel);
+            kernel(kernel==0) = -1;
+            convPlot = conv2(orig, kernel, 'same');
+            convPlot = (kernelVolume * 0.45 < convPlot);
+            cc = bwconncomp(convPlot);
+            if cc.NumObjects ~= 0
+                labeled = labelmatrix(cc);
+                [kr, kc] = size(kernel);
+                kernel(kernel==-1) = 0;
+                for i = 1:cc.NumObjects
+                    noteSpace = labeled == i;
+                    stats = regionprops(noteSpace);
+                    centroid = stats.Centroid;
+                    img(round(centroid(2)-kr/2):round(centroid(2)+kr/2)-1, round(centroid(1)-kc/2):round(centroid(1)+kc/2)-1) = img(round(centroid(2)-kr/2):round(centroid(2)+kr/2)-1, round(centroid(1)-kc/2):round(centroid(1)+kc/2)-1) + kernel;
+                end
+            end
+        end
+        
         function sections = getSections(self)
             if ~isempty(self.Sections)
                 sections = self.Sections;
@@ -41,7 +105,6 @@ classdef Page < MusicPlayer
             % get splits (the rows that divide the page into its sections)
             splits = [];
             for i = 11:10:length(staffLines)
-                % TODO: optimize
                 splits = [splits, floor((staffLines(i-1)+staffLines(i))/2)];
             end
             splits = [1, splits];
@@ -58,31 +121,64 @@ classdef Page < MusicPlayer
             self.Sections = sections;
         end
         
-        function structure = getStructure(self)
-            structure1 = {};
-            structure2 = {};
-            sections = self.getSections();
-            for i = 1:length(sections)
-                section = sections{i};
-                unitMap =  section.getUnitMap();
-                s1 = unitMap{1}(:, any(~cellfun('isempty',unitMap{1}), 1));
-                s2 = unitMap{2}(:, any(~cellfun('isempty',unitMap{2}), 1));
-                structure1 = [structure1, s1];
-                structure2 = [structure2, s2];
-            end
-            structure = {structure1, structure2};
+        function tempo = getTempo(self)
+            img = self.getImage();
+            [nr, nc] = size(img);
+            region = img(1:round(nr/4), 1:round(nc/2));
+            text = ocr(bwmorph(region, 'skel', inf));
+            tempo = tempoMatcher(text.Words);
         end
         
         function audio = getAudio(self)
+            tempo = self.getTempo;
+            len = round(1/(tempo/60*4/self.Frequency)); % num spaces occupied by a sixteenth note
             sections = self.getSections();
-            audioList = cell(length(sections), 1);
+            audio = zeros(len*16*length(sections{1}.BarLines)*length(sections)*2, 2);
+            audioIdx = 1;
             for i = 1:length(sections)
-                audioList{i} = sections{i}.getAudio();
+                section = sections{i};
+                unitMap =  section.getUnitMap();
+                
+                % see condensed unitMap
+                condensed1 = unitMap{1}(:, any(~cellfun('isempty', unitMap{1}), 1));
+                condensed2 = unitMap{2}(:, any(~cellfun('isempty', unitMap{2}), 1));
+                
+                for j = 1:length(section.BarLines)-1
+                    colStart = section.BarLines(j);
+                    colEnd = section.BarLines(j+1) - 1;
+                    trebleBarAudio = [];
+                    bassBarAudio = [];
+                    for col = colStart:colEnd
+                        trebleColAudio = [];
+                        bassColAudio = [];
+                        for p = 1:30
+                            if ~isempty(unitMap{1}{p, col})
+                                unit = unitMap{1}{p, col};
+                                unitAudio = unit.getAudio(len);
+                                trebleColAudio = mergeAudio(trebleColAudio, unitAudio);
+                            end
+                            if ~isempty(unitMap{2}{p, col})
+                                unit = unitMap{2}{p, col};
+                                unitAudio = unit.getAudio(len);
+                                bassColAudio = mergeAudio(bassColAudio, unitAudio);
+                            end
+                        end
+                        trebleBarAudio = concatenateAudio({trebleBarAudio, trebleColAudio});
+                        bassBarAudio = concatenateAudio({bassBarAudio, bassColAudio});
+                    end
+                    barAudio = mergeAudio(trebleBarAudio, bassBarAudio);
+                    audio(audioIdx:audioIdx+length(barAudio)-1, :) = barAudio;
+                    audioIdx = audioIdx + length(barAudio);
+                end         
             end
-            audio = concatenateAudio(audioList);
+            while any(audio(audioIdx+1, :))
+                audioIdx = audioIdx + 1;
+            end
+            audio = audio(1:audioIdx, :);
         end
         
     end
+    
     
     methods (Static)
         function staffRows = getStaffRows(img)
@@ -93,8 +189,6 @@ classdef Page < MusicPlayer
             % make 0=black and 1=white to make logic easier
             img = ~img;
 
-            % TODO: come up with better identification
-            %   noise resistant, expects noise above and below
             % examine the middle section of each row
             start = round(nc/3);
             finish = nc-round(nc/4);
@@ -115,78 +209,14 @@ classdef Page < MusicPlayer
             if isempty(staffRows)
                 error('staffRows is empty');
             end
-            % The code below is an attempt to identify rows via derivatives
-            % rowSums = sum(img, 2);
-            % rowSums = rowSums - min(min(rowSums));
-            % 
-            % rowSumDerivs = zeros(nr, 1);
-            % for r = 2:nr
-            %     rowSumDerivs(r) = rowSums(r) - rowSums(r-1);
-            % end
-            % plot(rowSumDerivs);
-            % 
-            % sortedRowSumDerivs = sort(rowSumDerivs);
-            % 
-            % negDerivCutoff = sortedRowSumDerivs(1);
-            % largestJump = 0;
-            % i = 1;
-            % while i < nr && sortedRowSumDerivs(i+1) <= 0
-            %     jump = abs(sortedRowSumDerivs(i) - sortedRowSumDerivs(i+1));
-            %     if jump > largestJump
-            %         negDerivCutoff = sortedRowSumDerivs(i);
-            %         largestJump = jump;
-            %     end
-            %     i = i + 1;
-            % end
-            % 
-            % posDerivCutoff = sortedRowSumDerivs(nr);
-            % largestJump = 0;
-            % i = nr;
-            % while i > 1 && sortedRowSumDerivs(i-1) >= 0
-            %     jump = abs(sortedRowSumDerivs(i) - sortedRowSumDerivs(i-1));
-            %     if jump > largestJump
-            %         posDerivCutoff = sortedRowSumDerivs(i);
-            %         largestJump = jump;
-            %     end
-            %     i = i - 1;
-            % end
-            % 
-            % rowSumDerivs = rowSumDerivs .* ((rowSumDerivs <= negDerivCutoff) + (rowSumDerivs >= posDerivCutoff));
-            % plot(rowSumDerivs);
-            % 
-            % lineRows = zeros(nr, 1);
-            % i = 1;
-            % inLine = 0;
-            % for j = 1:nr
-            %     if rowSumDerivs(j) < 0
-            %         lineRows(i) = j;
-            %         i = i + 1;
-            %         inLine = 1;
-            %     elseif rowSumDerivs(j) > 0
-            %         inLine = 0;
-            %     elseif inLine
-            %         lineRows(i) = j;
-            %         i = i + 1;
-            %     end
-            % end
-            % 
-            % i = 2;
-            % while i <= nr && lineRows(i) ~= 0
-            %     i = i + 1;
-            % end
-            % lineRows = lineRows(1:i-1);
+            
+            
         end
  
         function [img, staffLines] = removeStaffLines(img, staffRows)
             % page = page without staff lines
             % staffLines = positions of staff lines that were removed 
             %   (median of a staff line's rows)
-
-            % TODO: better removal proccess
-            %   Account for curves (slurs)
-            %   Account for the row below
-            
-            % TODO: time this and see if any optimizations possible
 
             % to get staffLines, get median of each group of staffRows
             [~, nc] = size(img);
@@ -232,20 +262,8 @@ classdef Page < MusicPlayer
                         img(r, c) = 0;
                     end
                 end
-                % fill in horizontal continuity gaps
-%                 rangeParam = 3;
-%                 % TODO: make more efficient
-%                 for c = rangeParam+1:nc-rangeParam
-%                     if sum(img(r, c-rangeParam:c-1)) >= 1 && sum(img(r, c+1:c+rangeParam)) >= 1
-%                         img(r, c) = 1;
-%                     end
-%                 end
-%                 for c = nc-rangeParam:-1:rangeParam+1
-%                     if sum(img(r, c-rangeParam:c-1)) >= 1 && sum(img(r, c+1:c+rangeParam)) >= 1
-%                         img(r, c) = 1;
-%                     end
-%                 end
             end
+            
             % fill in vertical continuity gaps
             for i = 1:length(positions)
                 if positions(i) == 'm'

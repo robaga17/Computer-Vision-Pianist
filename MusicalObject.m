@@ -1,4 +1,6 @@
 classdef MusicalObject < handle
+    % Represents any musical object. Notes, rests, articulations, dynamics.
+    % Instances of MusicalObject are called 'object' throughout the code
     
     properties
         LabelTag
@@ -28,6 +30,11 @@ classdef MusicalObject < handle
         function tf = isAccidental(self)
             tf = strcmp(self.Label, 'natural') || strcmp(self.Label, 'flat') || strcmp(self.Label, 'sharp');
         end
+        
+        function tf = isDynamic(self)
+            tf = strcmp(self.Label, 'p') || strcmp(self.Label, 'mp') || strcmp(self.Label, 'm') || strcmp(self.Label, 'mf') || strcmp(self.Label, 'f');
+        end
+        
         
         function duration = getRestDuration(self)
             if ~self.isRest()

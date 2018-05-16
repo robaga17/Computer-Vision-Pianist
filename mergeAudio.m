@@ -1,8 +1,6 @@
 function mergedAudio = mergeAudio(audio1,audio2)
 % Merges audio1 and audio2
 
-% TODO: allow overlapping merge for more continuity
-
 [nRows1, ~] = size(audio1);
 [nRows2, ~] = size(audio2);
 

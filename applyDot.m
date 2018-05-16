@@ -1,4 +1,7 @@
 function unitMap = applyDot(unitMap, tb, object, section)
+% object.Label must be 'dot'
+% applies dot to appropirate unit in unitMap
+% handles case where dot is actually a staccato
 
 halfSpace = (section.TrebleRows(2) - section.TrebleRows(1))/2;
 if tb == 1

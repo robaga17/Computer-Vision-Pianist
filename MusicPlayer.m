@@ -1,6 +1,5 @@
 classdef (Abstract) MusicPlayer < handle
-    % Abstract class for a music player (e.g. Score, Page, Section, Note,
-    % Unit)
+    % Abstract class for a music player (Score, Page)
     
     properties
         Player = [] % constructed via audioplayer()

@@ -1,4 +1,7 @@
 function unitMap = applyAccidental(unitMap, tb, object, section)
+% object.Label must be 'natural', 'flat', or 'sharp'
+% applies accidental to the appropirate units in unitMap
+% handles case were object is part of the key signature
 
 halfSpace = (section.TrebleRows(2) - section.TrebleRows(1))/2;
 if tb == 1
@@ -26,17 +29,21 @@ while i <= length(section.BarLines) && section.BarLines(i) < colStart
 end
 if i == length(section.BarLines)
     return
+elseif i == 2 && (colStart-section.BarLines(1))/(section.BarLines(2)-section.BarLines(1)) < 3/8
+    % key sig
+    colEnd = section.BarLines(end);
+else
+    % accidental
+    colEnd = section.BarLines(i);
 end
-colEnd = section.BarLines(i);
-
+   
 accidental = 0;
 if strcmp(object.Label, 'flat')
-    accidental = -1;
+    accidental = -0.5;
 elseif strcmp(object.Label, 'sharp')
-    accidental = 1;
+    accidental = 0.5;
 end
     
-
 for c = colStart:colEnd
     for p = getOctaves(pitch)
         if ~isempty(unitMap{tb}{p, c})

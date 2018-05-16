@@ -1,4 +1,7 @@
 function unitMap = insertNote(unitMap, tb, object, section)
+% object.isNote() should be true
+% Inserts object (in unit form) into unitMap
+
 halfSpace = (section.TrebleRows(2) - section.TrebleRows(1))/2;
 if tb == 1
     midCRow = section.TrebleRows(5) + halfSpace*2;
@@ -15,6 +18,9 @@ if strcmp(object.Label, 'n w')
     kernelPath = 'kernels/wholeNote.jpg';
 elseif strcmp(object.Label, 'n h')
     kernelPath = 'kernels/halfNote.jpg';
+    img = zeros(size(img));
+    bb = object.Stats.BoundingBox;
+    img(bb(2):bb(2)+bb(4), bb(1)-3:bb(1)+bb(3)+3) = section.Image(bb(2):bb(2)+bb(4), bb(1)-3:bb(1)+bb(3)+3);
 else
     kernelPath = 'kernels/filledNote.jpg';
 end
@@ -29,7 +35,7 @@ kernelVolume = sum(sum(kernel));
 
 pitchPlot = conv2(img, kernel, 'same');
 if strcmp(kernelPath, 'kernels/filledNote.jpg')
-    pitchPlot = pitchPlot >= kernelVolume * 0.90;
+    pitchPlot = pitchPlot >= kernelVolume * 0.85;
 else
     pitchPlot = pitchPlot >= kernelVolume * 0.60;
 end

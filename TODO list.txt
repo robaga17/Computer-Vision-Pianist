@@ -1,6 +1,0 @@
-Use a trebleUnitMap and bassUnitMap
-    changes how pitches are made
-    changes how rests are made
-Add kernel for half notes
-Add kernel for whole notes
-Dot matching

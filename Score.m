@@ -51,11 +51,11 @@ classdef Score < MusicPlayer
         function audio = getAudio(self)
             % check if there is a saved audio file
             baseName = getBaseName(self.FilePath);
-%             audioFilePath = ['audio/', baseName, '.ogg'];
-%             if ~isempty(dir(audioFilePath))
-%                 [audio, ~] = audioread(audioFilePath);
-%                 return
-%             end
+            audioFilePath = ['audio/', baseName, '.ogg'];
+            if ~isempty(dir(audioFilePath))
+                [audio, ~] = audioread(audioFilePath);
+                return
+            end
 
             % construct audio from self.Pages
             pages = self.getPages();
@@ -64,7 +64,7 @@ classdef Score < MusicPlayer
                 audioList{i} = pages{i}.getAudio();
             end
             audio = concatenateAudio(audioList);
-%             audiowrite(['audio/', baseName, '.ogg'], audio, self.Frequency);
+            audiowrite(['audio/', baseName, '.ogg'], audio, self.Frequency);
         end
 
     end

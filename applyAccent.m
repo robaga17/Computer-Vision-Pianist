@@ -1,4 +1,7 @@
 function unitMap = applyAccent(unitMap, tb, object, section)
+% object.Label must be 'accent'
+% applies the accent to the appropirate unit in unitMap
+
 halfSpace = (section.TrebleRows(2) - section.TrebleRows(1))/2;
 if tb == 1
     midCRow = section.TrebleRows(5) + halfSpace*2;

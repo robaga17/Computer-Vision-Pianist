@@ -1,34 +1,36 @@
 function [] = handClassify()
+% First, place pdfs or images you want to classify in data folder
+% Then, call this function from the command line
+% Note that only the first two sections of the sheet music will be
+% iterated through
 
-% pdfs = dir('data/*.pdf');
-% for pdf = pdfs'
-%     pdf2imgs('data', 'images', pdf.name);
-%     delete(['data/', pdf.name]);
-% end
-
+pdfs = dir('data/*.pdf');
+for pdf = pdfs'
+    pdf2imgs('data', 'data', pdf.name);
+    delete(['data/', pdf.name]);
+end
 
 jpgs = dir('data/*.jpg');
+load model classifier;
 for jpg = jpgs'
-    load model classifier;
     page = Page(['data/', jpg.name]);
     sections = page.getSections();
     hashSet = java.util.HashSet();
-    for i = 1:length(sections)
+    % only train on first two sections
+    for i = 1:min(length(sections), 2)
         section = sections{i};
         [nr, nc] = size(section.Image);
         objects = section.findObjects();        
         for j = 1:length(objects)
             object = objects{j};
             bb = object.Stats.BoundingBox;
-            isoObjImg = (section.Image(bb(2):bb(2)+bb(4), bb(1):bb(1)+bb(3)));
+            sectionImgToUse = (section.Labeled == object.LabelTag);
+            isoObjImg = (sectionImgToUse(bb(2):bb(2)+bb(4), bb(1):bb(1)+bb(3)));
             paddedObjImg = padarray(isoObjImg, [5, 5], 0, 'both');
             hashVal = hashBW(isoObjImg);
             if hashSet.contains(hashVal)
                 continue
             end
-            
-            % TODO: utilize fact that object will already have been
-            % classified
             [predictedLabelIdx, score] = predict(classifier, single(paddedObjImg));
             predictedLabel = classifier.Labels(predictedLabelIdx);
             predictedLabel = predictedLabel{1};
@@ -54,6 +56,9 @@ for jpg = jpgs'
                 continue
             end
             if strcmp(label, '''')
+                if score > -0.001
+                    continue
+                end
                label = predictedLabel;
             end
             folder = ['train/', label];
@@ -65,6 +70,5 @@ for jpg = jpgs'
         close all
     end
     delete(['data/', jpg.name]);
-
 end
 

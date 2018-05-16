@@ -1,5 +1,4 @@
-% trim all the sounds in 'raw sounds' folder, 
-% and place them in 'sounds' folder
+% Was used to remove the silence at the beginning and end of pitch files
 
 aiffs = dir('raw sounds/*.aiff');
 for aiff = aiffs'
